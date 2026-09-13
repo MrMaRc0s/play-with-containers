@@ -1,0 +1,110 @@
+services:
+  inventory-database:
+    build: ./inventory-database
+    image: inventory-database
+    container_name: inventory-database
+    restart: on-failure
+    env_file: .env
+    expose:
+      - "5432"
+    volumes:
+      - inventory-database:/var/lib/postgresql
+    networks:
+      - crud-master-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  billing-database:
+    build: ./billing-database
+    image: billing-database
+    container_name: billing-database
+    restart: on-failure
+    env_file: .env
+    expose:
+      - "5432"
+    volumes:
+      - billing-database:/var/lib/postgresql
+    networks:
+      - crud-master-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    build: ./rabbitmq
+    image: rabbitmq
+    container_name: RabbitMQ
+    restart: on-failure
+    env_file: .env
+    expose:
+      - "5672"
+    networks:
+      - crud-master-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  inventory-app:
+    build: ./inventory-app
+    image: inventory-app
+    container_name: inventory-app
+    restart: on-failure
+    env_file: .env
+    depends_on:
+      inventory-database:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - crud-master-network
+
+  billing-app:
+    build: ./billing-app
+    image: billing-app
+    container_name: billing-app
+    restart: on-failure
+    env_file: .env
+    depends_on:
+      billing-database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - crud-master-network
+
+  api-gateway-app:
+    build: ./api-gateway-app
+    image: api-gateway-app
+    container_name: api-gateway-app
+    restart: on-failure
+    env_file: .env
+    depends_on:
+      - inventory-app
+      - rabbitmq
+    ports:
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+    volumes:
+      - api-gateway-app:/var/log/api-gateway
+    networks:
+      - crud-master-network
+
+volumes:
+  inventory-database:
+    name: inventory-database
+  billing-database:
+    name: billing-database
+  api-gateway-app:
+    name: api-gateway-app
+
+networks:
+  crud-master-network:
+    driver: bridge
